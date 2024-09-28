@@ -59,12 +59,21 @@ def create_pdf(extracted_text):
         if line.strip():
             pdf.cell(200, 10, txt=line, ln=True, align='L')
 
-    # Save PDF to a BytesIO buffer
+    # Create a BytesIO buffer
     buffer = io.BytesIO()
-    pdf.output(buffer)
+
+    # Output the PDF content to the buffer (set dest='S' for a string and write it to the buffer)
+    pdf_output = pdf.output(dest='S').encode('latin1')
+    
+    # Write the PDF string to the buffer
+    buffer.write(pdf_output)
+
+    # Rewind the buffer to the beginning
     buffer.seek(0)
     
     return buffer
+
+
 
 # Main route for the app
 @app.route('/', methods=['GET', 'POST'])
@@ -80,10 +89,16 @@ def index():
                 # Generate PDF option
                 if 'generate_pdf' in request.form:
                     pdf_buffer = create_pdf(extracted_text)
-                    return send_file(pdf_buffer, as_attachment=True, download_name="extracted_info.pdf", mimetype='application/pdf')
+                    return send_file(
+                        pdf_buffer,
+                        as_attachment=True,
+                        download_name="extracted_info.pdf",
+                        mimetype='application/pdf'
+                    )
 
                 return extracted_text  # Just show extracted text as response in HTML
     return render_template('index.html')
+
 
 if __name__ == "__main__":
     app.run(debug=True)

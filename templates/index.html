@@ -7,14 +7,11 @@
 </head>
 <body>
     <h1>Upload Image for Text Extraction</h1>
-    <form action="/" method="post" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/png, image/jpeg">
-        <br><br>
-        <input type="submit" value="Extract Text">
-        <br><br>
-        <label for="generate_pdf">Generate PDF</label>
-        <input type="checkbox" name="generate_pdf" id="generate_pdf">
-        <br><br>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required>
+        <button type="submit">Extract Text</button>
+        <button type="submit" name="generate_pdf" value="1">Generate PDF</button>
     </form>
+    
 </body>
 </html>
