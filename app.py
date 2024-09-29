@@ -63,32 +63,60 @@ def create_pdf(extracted_text):
     buffer = io.BytesIO()
 
     # Output the PDF content to the buffer (set dest='S' for a string and write it to the buffer)
-    pdf_output = pdf.output(dest='S').encode('latin1')
-    
+    pdf_output = pdf.output(dest='S').encode('UTF-8')
+
     # Write the PDF string to the buffer
     buffer.write(pdf_output)
 
     # Rewind the buffer to the beginning
     buffer.seek(0)
-    
+
     return buffer
 
+# Function to remove the specific text from extracted data
+def organize_text(extracted_text):
+    # Removing the specified phrases
+    cleaned_text = extracted_text.replace("ROYAUMEDU MAROC@ KINGDOM", "")
+    cleaned_text = cleaned_text.replace("Scanned with CamScanner", "")
+    cleaned_text = cleaned_text.replace("PREFECTURE", "")
+
+    # Split the text on the keyword "Marocaine"
+    parts = cleaned_text.split("Marocaine")
+
+    if len(parts) > 1:
+        before_marocaine = parts[0].strip()  # Everything before "Marocaine"
+        after_marocaine = "Marocaine" + parts[1].strip()  # Everything after "Marocaine", including "Marocaine"
+    else:
+        # If "Marocaine" is not found, handle it by keeping the text as is
+        before_marocaine = cleaned_text.strip()
+        after_marocaine = ""
+
+    # Combine both parts, ensuring they are on separate lines
+    organized_text = before_marocaine + "\n" + after_marocaine
+
+    return organized_text
 
 
-# Main route for the app
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         if 'image' in request.files:
             image = request.files['image']
-            
+
             if image.filename != '':
                 # Extract text from the image
                 extracted_text = extract_text(image)
-                
+
+                if not extracted_text.strip():  # Check if the extracted text is empty
+                    return "No text found in the image or OCR failed."
+
+                # Clean the extracted text by removing the specified phrases
+                cleaned_text = organize_text(extracted_text)
+
                 # Generate PDF option
                 if 'generate_pdf' in request.form:
-                    pdf_buffer = create_pdf(extracted_text)
+                    pdf_buffer = create_pdf(cleaned_text)
                     return send_file(
                         pdf_buffer,
                         as_attachment=True,
@@ -96,7 +124,7 @@ def index():
                         mimetype='application/pdf'
                     )
 
-                return extracted_text  # Just show extracted text as response in HTML
+                return cleaned_text  # Return cleaned text as response in HTML
     return render_template('index.html')
 
 
