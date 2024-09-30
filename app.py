@@ -1,132 +1,117 @@
-from flask import Flask, render_template, request, send_file
-import requests
-import os
-from fpdf import FPDF
-from dotenv import load_dotenv
+from flask import Flask, render_template, request, send_file, jsonify
+from passporteye import read_mrz
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from PIL import Image
 import io
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Initialize the Flask app
 app = Flask(__name__)
 
-# Access the loaded environment variables
-api_key = os.getenv('Api_Key')
-
-# Function to extract text from an image using OCR.space API
-def extract_text(image):
+# Function to process the image and extract MRZ data
+def process_passport_image(image):
     try:
-        api_url = 'https://api.ocr.space/parse/image'
-        file_extension = os.path.splitext(image.filename)[1].lower()
-        valid_filetypes = ['jpg', 'jpeg', 'png']
+        # Convert the file to an image format recognized by passporteye
+        img = Image.open(image)
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
 
-        if file_extension[1:] in valid_filetypes:
-            params = {
-                'apikey': api_key,
-                'filetype': file_extension[1:]
-            }
+        # Extract MRZ data from the image
+        mrz = read_mrz(img_byte_arr)
+        if mrz is None:
+            return None, "Could not extract MRZ data. Make sure the image is a valid passport image."
+        return mrz.to_dict(), None
 
-            image_bytes = image.read()
-            response = requests.post(api_url, files={'file': image_bytes}, data=params)
-
-            result = response.json()
-
-            if 'ParsedResults' in result:
-                return result['ParsedResults'][0]['ParsedText']
-            else:
-                return 'Error in OCR.space API response'
-        else:
-            return 'Unsupported file type'
     except Exception as e:
-        return str(e)
+        return None, str(e)
 
-# Function to create a PDF with the organized information
-def create_pdf(extracted_text):
-    # Create instance of FPDF class
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+# Function to generate a well-structured PDF with the extracted information
+def generate_pdf(data):
+    buffer = io.BytesIO()  # PDF is written to an in-memory buffer
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    story = []
 
-    # Add a title
-    pdf.cell(200, 10, txt="Extracted Information", ln=True, align='C')
+    styles = getSampleStyleSheet()
 
-    # Simulate the organized data extraction for a passport
-    lines = extracted_text.split("\n")
+    # Title
+    story.append(Paragraph("Passport MRZ Data", styles['Title']))
+    story.append(Spacer(1, 20))
 
-    # Add organized info to the PDF
-    for line in lines:
-        if line.strip():
-            pdf.cell(200, 10, txt=line, ln=True, align='L')
+    # Organize the data in sections
+    personal_info = [
+        ['Name', data.get('names')],
+        ['Surname', data.get('surname')],
+        ['Date of Birth', data.get('date_of_birth')],
+        ['Nationality', data.get('nationality')],
+        ['Sex', data.get('sex')]
+    ]
 
-    # Create a BytesIO buffer
-    buffer = io.BytesIO()
+    doc_info = [
+        ['Document Type', data.get('type')],
+        ['Document Number', data.get('number')],
+        ['Issuing Country', data.get('country')],
+        ['Expiration Date', data.get('expiration_date')],
+        ['MRZ Code', data.get('mrz')]
+    ]
 
-    # Output the PDF content to the buffer (set dest='S' for a string and write it to the buffer)
-    pdf_output = pdf.output(dest='S').encode('UTF-8')
+    # Add personal information section
+    story.append(Paragraph("Personal Information", styles['Heading2']))
+    personal_table = Table(personal_info)
+    personal_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige)]))
+    story.append(personal_table)
+    story.append(Spacer(1, 20))
 
-    # Write the PDF string to the buffer
-    buffer.write(pdf_output)
+    # Add document information section
+    story.append(Paragraph("Document Information", styles['Heading2']))
+    doc_table = Table(doc_info)
+    doc_table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                   ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                   ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                   ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                   ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                   ('BACKGROUND', (0, 1), (-1, -1), colors.beige)]))
+    story.append(doc_table)
+    story.append(Spacer(1, 20))
 
-    # Rewind the buffer to the beginning
+    # Build PDF document
+    doc.build(story)
+    
     buffer.seek(0)
-
     return buffer
-
-# Function to remove the specific text from extracted data
-def organize_text(extracted_text):
-    # Removing the specified phrases
-    cleaned_text = extracted_text.replace("ROYAUMEDU MAROC@ KINGDOM", "")
-    cleaned_text = cleaned_text.replace("Scanned with CamScanner", "")
-    cleaned_text = cleaned_text.replace("PREFECTURE", "")
-
-    # Split the text on the keyword "Marocaine"
-    parts = cleaned_text.split("Marocaine")
-
-    if len(parts) > 1:
-        before_marocaine = parts[0].strip()  # Everything before "Marocaine"
-        after_marocaine = "Marocaine" + parts[1].strip()  # Everything after "Marocaine", including "Marocaine"
-    else:
-        # If "Marocaine" is not found, handle it by keeping the text as is
-        before_marocaine = cleaned_text.strip()
-        after_marocaine = ""
-
-    # Combine both parts, ensuring they are on separate lines
-    organized_text = before_marocaine + "\n" + after_marocaine
-
-    return organized_text
-
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        if 'image' in request.files:
-            image = request.files['image']
+        if 'image' not in request.files:
+            return "No file uploaded", 400
 
-            if image.filename != '':
-                # Extract text from the image
-                extracted_text = extract_text(image)
+        image = request.files['image']
+        if image.filename == '':
+            return "No selected file", 400
 
-                if not extracted_text.strip():  # Check if the extracted text is empty
-                    return "No text found in the image or OCR failed."
+        # Process the uploaded image to extract MRZ data
+        mrz_data, error = process_passport_image(image)
+        
+        if error:
+            return error
 
-                # Clean the extracted text by removing the specified phrases
-                cleaned_text = organize_text(extracted_text)
+        # If "Generate PDF" button is pressed
+        if 'generate_pdf' in request.form:
+            pdf_file = generate_pdf(mrz_data)
+            return send_file(pdf_file, as_attachment=True, download_name='passport_info.pdf', mimetype='application/pdf')
 
-                # Generate PDF option
-                if 'generate_pdf' in request.form:
-                    pdf_buffer = create_pdf(cleaned_text)
-                    return send_file(
-                        pdf_buffer,
-                        as_attachment=True,
-                        download_name="extracted_info.pdf",
-                        mimetype='application/pdf'
-                    )
+        # If "Extract MRZ Code" button is pressed
+        if 'extract_mrz_code' in request.form:
+            return jsonify({'mrz_code': mrz_data.get('mrz', 'MRZ code not found')})
 
-                return cleaned_text  # Return cleaned text as response in HTML
     return render_template('index.html')
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)

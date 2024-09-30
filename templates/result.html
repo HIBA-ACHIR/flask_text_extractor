@@ -3,11 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extracted Text</title>
+    <title>Extracted MRZ Data</title>
 </head>
 <body>
-    <h1>Extracted Text</h1>
-    <pre>{{ text }}</pre>
+    <h1>Extracted MRZ Data</h1>
+    <ul>
+        {% for key, value in data.items() %}
+            <li><strong>{{ key }}:</strong> {{ value }}</li>
+        {% endfor %}
+    </ul>
 
     <form action="{{ url_for('index') }}">
         <button type="submit">Go Back</button>

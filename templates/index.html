@@ -1,17 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OCR App</title>
+    <title>Passport MRZ Extractor</title>
 </head>
 <body>
-    <h1>Upload Image for Text Extraction</h1>
+    <h1>Passport MRZ Extractor</h1>
     <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required>
-        <button type="submit">Extract Text</button>
-        <button type="submit" name="generate_pdf" value="1">Generate PDF</button>
+        <label for="image">Upload Passport Image:</label>
+        <input type="file" name="image" accept="image/*" required><br><br>
+
+        <button type="submit" name="generate_pdf">Generate PDF</button>
+        <button type="submit" name="extract_mrz_code">Extract MRZ Code</button>
     </form>
-    
 </body>
 </html>
