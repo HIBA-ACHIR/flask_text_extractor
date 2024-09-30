@@ -8,6 +8,85 @@ from PIL import Image
 import io
 from datetime import datetime
 
+import os
+import mysql.connector  # Import the MySQL connector
+from flask import Flask
+
+app = Flask(__name__)
+
+# MySQL configuration (use environment variables for security)
+db_config = {
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'host': os.getenv('DB_HOST'),
+    'database': os.getenv('DB_NAME'),
+}
+def save_mrz_data(mrz_data):
+    try:
+        # Establish the database connection
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+
+        # Prepare SQL insert statement
+        sql = """INSERT INTO passport_data (names, surname, date_of_birth, nationality, sex,
+                                              type, number, personal_number, country, expiration_date, mrz)
+                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        values = (
+            mrz_data.get('names'),
+            mrz_data.get('surname'),
+            datetime.strptime(mrz_data.get('date_of_birth'), '%y%m%d').date(),  # Convert to date
+            mrz_data.get('nationality'),
+            mrz_data.get('sex'),
+            mrz_data.get('type'),
+            mrz_data.get('number'),
+            mrz_data.get('personal_number'),
+            mrz_data.get('country'),
+            datetime.strptime(mrz_data.get('expiration_date'), '%y%m%d').date(),  # Convert to date
+            mrz_data.get('raw_text')
+        )
+
+        # Execute the SQL command
+        cursor.execute(sql, values)
+        conn.commit()  # Commit the transaction
+        cursor.close()  # Close the cursor
+        conn.close()  # Close the connection
+        return True
+
+    except mysql.connector.Error as err:
+        print(f"Database error: {err}")
+        return False
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        if 'image' not in request.files:
+            return "No file uploaded", 400
+
+        image = request.files['image']
+        if image.filename == '':
+            return "No selected file", 400
+
+        # Process the uploaded image to extract MRZ data
+        mrz_data, error = process_passport_image(image)
+
+        if error:
+            return error
+
+        # Save data to the database
+        if not save_mrz_data(mrz_data):
+            return "Failed to save data to the database.", 500
+
+        # If "Generate PDF" button is pressed
+        if 'generate_pdf' in request.form:
+            pdf_file = generate_pdf(mrz_data)
+            return send_file(pdf_file, as_attachment=True, download_name='passport_info.pdf', mimetype='application/pdf')
+
+        # If "Extract MRZ Code" button is pressed
+        if 'extract_mrz_code' in request.form:
+            return jsonify({'mrz_code': mrz_data.get('mrz', 'MRZ code not found')})
+
+    return render_template('index.html')
+
+
 app = Flask(__name__)
 
 # Function to format dates to DD.MM.YYYY
@@ -120,15 +199,19 @@ def index():
         
         if error:
             return error
+        
+        print("Extracted MRZ Data:", mrz_data)  # Add this line
 
         # If "Generate PDF" button is pressed
         if 'generate_pdf' in request.form:
             pdf_file = generate_pdf(mrz_data)
             return send_file(pdf_file, as_attachment=True, download_name='passport_info.pdf', mimetype='application/pdf')
 
-        # If "Extract MRZ Code" button is pressed
         if 'extract_mrz_code' in request.form:
-            return jsonify({'mrz_code': mrz_data.get('mrz', 'MRZ code not found')})
+            mrz_code = mrz_data.get('raw_text', 'MRZ code not found')
+            formatted_mrz_code = mrz_code.replace('\n', '')
+            return jsonify({'mrz_code': formatted_mrz_code})
+
 
     return render_template('index.html')
 
