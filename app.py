@@ -6,8 +6,27 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from PIL import Image
 import io
+from datetime import datetime
 
 app = Flask(__name__)
+
+# Function to format dates to DD.MM.YYYY
+def format_date(mrz_date_str):
+    if mrz_date_str:
+        try:
+            # Assuming the input date is in YYMMDD format
+            year = int(mrz_date_str[0:2])
+            month = int(mrz_date_str[2:4])
+            day = int(mrz_date_str[4:6])
+            # Format year to two digits (assumed 1900s or 2000s)
+            if year < 50:  # Assuming years less than 50 are in 2000s
+                year += 2000
+            else:
+                year += 1900
+            return f"{day:02d}/{month:02d}/{year % 100:02d}"  # Format as DD/MM/YY
+        except ValueError:
+            return mrz_date_str  # If the format doesn't match, return original
+    return ""
 
 # Function to process the image and extract MRZ data
 def process_passport_image(image):
@@ -43,7 +62,7 @@ def generate_pdf(data):
     personal_info = [
         ['Name', data.get('names')],
         ['Surname', data.get('surname')],
-        ['Date of Birth', data.get('date_of_birth')],
+        ['Date of Birth', format_date(data.get('date_of_birth'))],  # Format date here
         ['Nationality', data.get('nationality')],
         ['Sex', data.get('sex')]
     ]
@@ -52,7 +71,7 @@ def generate_pdf(data):
         ['Document Type', data.get('type')],
         ['Document Number', data.get('number')],
         ['Issuing Country', data.get('country')],
-        ['Expiration Date', data.get('expiration_date')],
+        ['Expiration Date', format_date(data.get('expiration_date'))],  # Format date here
         ['MRZ Code', data.get('mrz')]
     ]
 
